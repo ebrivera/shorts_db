@@ -2,7 +2,8 @@
 
 import sqlite3, os, json, time
 
-DB_PATH = os.path.join(os.getcwd(), "youtube_shorts.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "..", "youtube_shorts.db")
+DB_PATH = os.path.abspath(DB_PATH)
 
 
 DDL = """

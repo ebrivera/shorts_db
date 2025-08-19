@@ -3,12 +3,6 @@
 /storage/db.db
 
 *.db
-*.db-journal
-*.db-lock
 *.db-wal
 *.db-shm
-*.db-trace
-*.db-trace-lock
-*.db-trace-wal
-*.db-trace-shm
 

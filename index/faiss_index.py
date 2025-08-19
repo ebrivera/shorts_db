@@ -55,4 +55,4 @@ def search(q: str, top_k: int = 10):
 
 
 if __name__ == "__main__":
-    print(search("python3 tutorials"))
+    print(search("how to make latte art"))

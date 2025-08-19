@@ -9,7 +9,7 @@ def run(q: str, region: str, days: int = 7, max_results: int = 25):
         query=q, 
         region=region, 
         since=since, 
-        max_rqesults=max_results
+        max_results=max_results
     )
     
     print(f"Found {len(items)} videos from YouTube API")  # Debug line

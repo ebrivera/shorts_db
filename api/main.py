@@ -50,13 +50,6 @@ def parse_view_count(stats_json: str) -> int:
     return int(stats.get("viewCount", 0))
 
 
-
-### helper functions
-def parse_view_count(stats_json: str) -> int:
-    stats = json.loads(stats_json or {}) # failsafe 
-    return int(stats.get("viewCount", 0))
-
-
 def recency_score(published_at: str) -> float:
     if not published_at:
         return 0.0
@@ -73,27 +66,22 @@ def recency_score(published_at: str) -> float:
     return max(0.0, 1.0 - (days_passed - 2.0) / 5.0 ) 
 
 def normalize_scores(scores: List[float]) -> List[float]:
-    if not values:
-        return values
+    if not scores:
+        return scores
 
     min_val, max_val = min(scores), max(scores)
 
     ## numbers that are the same will be given equal scores
     if math.isclose(min_val, max_val, rel_tol=1e-9):
-        return [0.5 for _ in values]  # neutral score instead of 0
+        return [0.5 for _ in scores]
 
-    return [(v - min_val) / (max_val - min_val) for v in values]
-
-# todo
-def diversity_pentalty(results: List[tuple], diversity: bool) -> List[tuple]:
-    return results
-
+    return [(v - min_val) / (max_val - min_val) for v in scores]
 
 
 @app.get("/v1/search", response_model=SearchResponse)
 def search(
     q: str = Query(..., min_length = 1, description="search query"),
-    k: int = Query(10, ge: 1, le: 50, description="number of results"),
+    k: int = Query(10, ge=1, le=50, description="number of results"), 
     days: int = Query(7, ge=1, le=10, description="Max age in days"),
     region: str = Query(None, description="region filter (ie US, SG)"),
     diversity: bool = Query(True, description="creator diversity"),
@@ -104,7 +92,7 @@ def search(
 
     start_time = time.time()
 
-    total_weight = w_similarity + w_recency + w_popularity
+    total_weight = weight_similarity + weight_recency + weight_popularity
     if not math.isclose(total_weight, 1.0, rel_tol=0.01):
         raise HTTPException(
             status_code=400, 
@@ -148,6 +136,10 @@ def search(
         if not video:
             continue
 
+        # Apply region filter
+        if region and (video.get("region", "").upper() != region.upper()):
+            continue
+
         if video.get("published_at"):
             pub_date = datetime.fromisoformat(
                 video["published_at"].replace("Z", "+00:00")
@@ -159,7 +151,7 @@ def search(
     if not candidates:
         return SearchResponse(
             query=q, results=[], total_found=0,
-            filters_applied={"days": days,"filtered_out": len(vector_results)}
+            filters_applied={"days": days, "region": region, "filtered_out": len(vector_results)}
         )
 
     similarities = [similarity for _, similarity, _ in candidates]
@@ -178,23 +170,50 @@ def search(
                       weight_recency * recency + 
                       weight_popularity * popularity)
         
-        scored_results.append((final_score, video))
+        scored_results.append({
+            'final_score': final_score,
+            'similarity': similarity,
+            'recency': recency,
+            'popularity': popularity,
+            'video': video
+        })
 
-    scored_results.sort(key=lambda x: x[0], reverse=True)
+    scored_results.sort(key=lambda x: x['final_score'], reverse=True)
     top_results = scored_results[:k]
 
-    
+    results = []
+    for result in top_results:
+        video = result['video']
+        results.append(VideoResult(
+            id=video["id"],
+            title=video.get("title", ""),
+            url=video.get("url", ""),
+            embed_html=video.get("embed_html", ""),
+            score=round(result['final_score'], 4),
+            similarity=round(result['similarity'], 4),
+            recency=round(result['recency'], 4),
+            popularity=round(result['popularity'], 4),
+            creator_name=video.get("creator_name", ""),
+            published_at=video.get("published_at", "")
+        ))
 
-    
+    print(f"Search '{q}' took {(time.time() - start_time)*1000:.1f}ms, returned {len(results)} results")
 
+    return SearchResponse(
+        query=q,
+        results=results,
+        total_found=len(candidates),
+        filters_applied={
+            "days": days,
+            "region": region,
+            "weights": {"similarity": weight_similarity, "recency": weight_recency, "popularity": weight_popularity}
+        }
+    )
 
-
-
-
-
-
-
+@app.get("/v1/health")
+def health():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
-    parse_view_count()
-
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
